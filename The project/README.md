@@ -45,9 +45,14 @@ First, install the dependencies for the Speech Modality:
 pip install -r "Speech_Detection-main/requirements.txt"
 ```
 
-Next, install the core libraries required for Gaze Detection and Multimodal Sandbox integration:
+Next, install the dependencies for the Gaze Modality:
 ```bash
-pip install opencv-python mediapipe sounddevice pynput
+pip install opencv-python mediapipe websockets numpy
+```
+
+Finally, install the additional core libraries required for the Multimodal Sandbox integration:
+```bash
+pip install sounddevice pynput
 ```
 
 ### Step 4: Verify the Setup
