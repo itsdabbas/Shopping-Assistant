@@ -1,0 +1,6 @@
+{"event": "prompt", "message": "Lock expired. Please look at the item again.", "timestamp": 1775130191.3972523}
+{"event": "interaction_success", "intent": "SHOW_DETAILS", "target_id": "item_3", "confidence": 0.9, "timestamp": 1775130197.7929673}
+{"event": "interaction_success", "intent": "SHOW_DETAILS", "target_id": "item_4", "confidence": 0.832, "timestamp": 1775130211.3476996}
+{"event": "prompt", "message": "Lock expired. Please look at the item again.", "timestamp": 1775130220.8051138}
+{"event": "interaction_success", "intent": "ADD_TO_CART", "target_id": "item_1", "confidence": 0.9, "timestamp": 1775130224.0336564}
+{"event": "interaction_success", "intent": "ADD_TO_CART", "target_id": "item_3", "confidence": 0.8853, "timestamp": 1775130236.7872694}

@@ -1,0 +1,6 @@
+{"event": "interaction_success", "intent": "ADD_TO_CART", "target_id": "item_1", "confidence": 0.98, "timestamp": 1775126137.514909}
+{"event": "prompt", "message": "Please look at an item to apply the command.", "timestamp": 1775126137.6177416}
+{"event": "disambiguation_prompt", "timestamp": 1775126137.719506}
+{"event": "interaction_success", "intent": "ADD_TO_CART", "target_id": "item_4", "confidence": 0.9, "timestamp": 1775126137.921523}
+{"event": "interaction_success", "intent": "REMOVE_ITEM", "target_id": "test_c", "confidence": 0.98, "timestamp": 1775126138.0255826}
+{"event": "prompt", "message": "Lock expired. Please look at the item again.", "timestamp": 1775126142.7000587}

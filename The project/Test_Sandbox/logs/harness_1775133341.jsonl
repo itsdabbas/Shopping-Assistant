@@ -1,0 +1,8 @@
+{"event": "prompt", "message": "Lock expired. Please look at the item again.", "timestamp": 1775133372.665366}
+{"event": "interaction_success", "intent": "SHOW_DETAILS", "target_id": "item_4", "confidence": 0.9, "timestamp": 1775133376.4114497}
+{"event": "prompt", "message": "Lock expired. Please look at the item again.", "timestamp": 1775133380.4692008}
+{"event": "interaction_success", "intent": "SHOW_DETAILS", "target_id": "item_4", "confidence": 0.9, "timestamp": 1775133391.9869206}
+{"event": "interaction_success", "intent": "SHOW_ALTERNATIVES", "target_id": "item_4", "confidence": 0.8818, "timestamp": 1775133395.8738642}
+{"event": "interaction_success", "intent": "HELP", "target_id": null, "confidence": 0.6236, "timestamp": 1775133408.1564395}
+{"event": "confirmation_prompt", "timestamp": 1775133429.373547}
+{"event": "interaction_success", "intent": "REMOVE_ITEM", "target_id": "item_4", "confidence": 0.9, "timestamp": 1775133433.3584795}

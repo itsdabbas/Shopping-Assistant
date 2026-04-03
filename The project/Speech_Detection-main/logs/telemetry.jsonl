@@ -1,0 +1,4 @@
+{"event": "interaction_success", "intent": "ADD_TO_CART", "target_id": "shopping_item_42", "confidence": 0.98, "timestamp": 1775123827.1575468}
+{"event": "prompt", "message": "Please look at an item to apply the command.", "timestamp": 1775123827.261891}
+{"event": "disambiguation_prompt", "timestamp": 1775123827.363919}
+{"event": "interaction_success", "intent": "REMOVE_ITEM", "target_id": "item_stale", "confidence": 0.98, "timestamp": 1775123827.6672063}

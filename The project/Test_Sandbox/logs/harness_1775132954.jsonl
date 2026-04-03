@@ -1,0 +1,7 @@
+{"event": "prompt", "message": "Lock expired. Please look at the item again.", "timestamp": 1775132986.9157732}
+{"event": "interaction_success", "intent": "FIND_SIMILAR", "target_id": "item_4", "confidence": 0.9, "timestamp": 1775132990.0815482}
+{"event": "confirmation_prompt", "timestamp": 1775133012.7526274}
+{"event": "interaction_cancelled", "reason": "timeout", "message": "Dialog timed out.", "timestamp": 1775133038.4680715}
+{"event": "confirmation_prompt", "timestamp": 1775133046.9333105}
+{"event": "interaction_cancelled", "reason": "timeout", "message": "Dialog timed out.", "timestamp": 1775133055.9950838}
+{"event": "confirmation_prompt", "timestamp": 1775133061.618453}
