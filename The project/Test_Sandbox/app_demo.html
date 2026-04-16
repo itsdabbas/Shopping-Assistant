@@ -259,7 +259,7 @@ body {
 <div id="topbar">
   <div class="conn-dot" id="conn-dot"></div>
   <span id="conn-label">Connecting to ws://localhost:8766…</span>
-  <span id="fusion-state-badge">IDLE</span>
+  <span id="fusion-state-badge">NO TARGET</span>
 </div>
 
 <!-- Main -->
@@ -279,7 +279,7 @@ body {
       <div class="panel-title">Speech</div>
       <div id="ptt-status">
         <span id="ptt-dot" style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block"></span>
-        <span id="ptt-label">Idle — press M to speak</span>
+        <span id="ptt-label">STANDBY — Hold 'M' to Talk</span>
       </div>
       <div class="speech-row">
         <span class="speech-label">Transcript: </span>
@@ -437,7 +437,7 @@ function handleMsg(msg) {
   if (msg.type === 'UNLOCKED' || msg.type === 'EXPIRED') {
     clearGaze();
     badge.className = '';
-    badge.textContent = 'IDLE';
+    badge.textContent = 'NO TARGET';
     detail.textContent = 'No target locked';
     detail.style.color = '#8b949e';
     prompt.style.display = 'none';
@@ -452,10 +452,10 @@ function handleMsg(msg) {
       pttLabel.textContent = 'Listening…';
     } else if (msg.speech_type === 'STOPPED') {
       ptt.classList.remove('listening');
-      pttLabel.textContent = 'Idle — press M to speak';
+      pttLabel.textContent = 'STANDBY — Hold \'M\' to Talk';
     } else if (msg.speech_type === 'INTENT') {
       ptt.classList.remove('listening');
-      pttLabel.textContent = 'Idle — press M to speak';
+      pttLabel.textContent = 'STANDBY — Hold \'M\' to Talk';
       document.getElementById('transcript-val').textContent = msg.transcript || '—';
     }
   }
@@ -625,7 +625,7 @@ document.addEventListener('keyup', e => {
   if (e.code === 'KeyM') {
     ws.send(JSON.stringify({type: 'PTT', action: 'release'}));
     document.getElementById('ptt-status').classList.remove('listening');
-    document.getElementById('ptt-label').textContent = 'Idle — press M to speak';
+    document.getElementById('ptt-label').textContent = 'STANDBY — Hold \'M\' to Talk';
   }
 });
 
