@@ -19,16 +19,43 @@ from dataclasses import asdict
 
 import cv2
 import numpy as np
+import argparse
+import sys
+import os
+import time
+import threading
+import json
+from pathlib import Path
+from dataclasses import asdict
 
-# --- YOL AYARLAMALARI ---
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+import cv2
+import numpy as np
+
+# --- 1. Define path variables first, before any imports ---
+CURRENT_FILE = Path(__file__).resolve()
+CURRENT_DIR = CURRENT_FILE.parent 
+PROJECT_ROOT = CURRENT_DIR.parent
+
 TOOLKIT_DIR = PROJECT_ROOT / "Speech_Detection-main"
 GAZE_SERVER_DIR = PROJECT_ROOT / "Gaze_Detection-main"
 
+# --- 2. Path sanity check ---
+print(f"🔍 check:")
+print(f"   Root: {PROJECT_ROOT}")
+print(f"   Gaze Path: {GAZE_SERVER_DIR} [{'✅ OK' if GAZE_SERVER_DIR.exists() else '❌ ERR'}]")
+
+# --- 3. Inject system paths ---
+sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(TOOLKIT_DIR))
 sys.path.insert(0, str(GAZE_SERVER_DIR))
 
-# Toolkit Sınıfları
+# --- 3. Inject system paths ---
+try:
+    os.chdir(str(GAZE_SERVER_DIR))
+except Exception as e:
+    print(f"❌ failed to change directory: {e}")
+
+# --- 5. Import core components ---
 from gazeshop.toolkit.config import Config
 from gazeshop.toolkit.event_bus import EventBus, GazeEvent, GazeEventType, SpeechEventType
 from gazeshop.toolkit.adapters.speech_adapter import SpeechAdapter
@@ -36,22 +63,49 @@ from gazeshop.toolkit.fusion_engine import FusionEngine
 from gazeshop.toolkit.dialogue_manager import DialogueManager
 from gazeshop.toolkit.telemetry import TelemetryLogger
 
-# Gaze Sınıfları (Eski sistemdeki algoritmadan sadece tespit katmanı alınır)
+# --- 6. Import gaze tracking module ---
 try:
     from dwell_tracker import DwellTracker as OldDwellTracker
     from gaze_server import GazeTracker, GazeCalibrator, draw_face_debug
-except ImportError:
-    print("UYARI: GazeTracker modülleri Gaze_Detection-main altında bulunamadı.")
+    print("✅ successfully imported gaze tracking components.")
+except ImportError as e:
+    print(f"❌ failed to import gaze tracking components: {e}")
     GazeTracker = None
 
-# ─── BBOX TANIMLAMALARI (LIVE MODE İÇİN) ───
-# Eklenecek sanal kutular (Normalized coordinates: 0.0 - 1.0)
-VIRTUAL_BBOXES = {
-    "item_1": {"x1": 0.1, "y1": 0.1, "x2": 0.4, "y2": 0.4, "color": (200,0,0)},
-    "item_2": {"x1": 0.6, "y1": 0.1, "x2": 0.9, "y2": 0.4, "color": (0,200,0)},
-    "item_3": {"x1": 0.1, "y1": 0.6, "x2": 0.4, "y2": 0.9, "color": (0,0,200)},
-    "item_4": {"x1": 0.6, "y1": 0.6, "x2": 0.9, "y2": 0.9, "color": (200,200,0)},
-}
+# --- 7. Restore original working directory (CURRENT_DIR is guaranteed to be defined now) ---
+os.chdir(str(CURRENT_DIR))
+print("🚀 system is ready, starting Live mode...")
+
+# ─── Items ───
+GRID_COLS = 4
+GRID_ROWS = 4
+PADDING = 0.02
+
+VIRTUAL_BBOXES = {}
+for _row in range(GRID_ROWS):
+    for _col in range(GRID_COLS):
+        _idx = _row * GRID_COLS + _col + 1
+        _item_id = f"item_{_idx}"
+        _cell_w = (1.0 - PADDING * (GRID_COLS + 1)) / GRID_COLS
+        _cell_h = (1.0 - PADDING * (GRID_ROWS + 1)) / GRID_ROWS
+        _x1 = PADDING + _col * (_cell_w + PADDING)
+        _y1 = PADDING + _row * (_cell_h + PADDING)
+        VIRTUAL_BBOXES[_item_id] = {
+            "x1": round(_x1, 4),
+            "y1": round(_y1, 4),
+            "x2": round(_x1 + _cell_w, 4),
+            "y2": round(_y1 + _cell_h, 4),
+            "color": [
+                (200, 80,  80),  (80, 200,  80),
+                (80,  80, 200),  (200,200,  80),
+                (200, 80, 200),  (80, 200, 200),
+                (200,140,  80),  (140, 80, 200),
+                (80, 140, 200),  (200, 80, 140),
+                (140,200,  80),  (80, 200, 140),
+                (180,180,  80),  (80, 180, 180),
+                (180, 80, 180),  (120,120, 120),
+            ][_idx - 1],
+        }
 
 def get_target_for_gaze(gx: float, gy: float) -> str | None:
     """Normalize x,y (0-1) koordinatından virtual bbox eşleştirmesi."""
@@ -74,7 +128,8 @@ class HarnessSystem:
             ASR_ENGINE="whisper",
             WHISPER_MODEL_SIZE="base",
             MIN_UTTERANCE_MS=100,       # 100 milisaniye bile olsa es geçme!
-            ENERGY_THRESHOLD=0.0        # Mikrofon ne kadar fısıltılı olsa da her sesi yakala
+            ENERGY_THRESHOLD=0.0,        # Mikrofon ne kadar fısıltılı olsa da her sesi yakala
+            CONFIDENCE_THRESHOLD=0.95  # for DEMO, high threshold to trigger confirmation for most intents 
         )
         
         # SCRIPTED simülasyonları ve canlı takip için sayaçlar
@@ -117,6 +172,12 @@ class HarnessSystem:
         self.engine = FusionEngine(self.bus, self.config)
         self.dm = DialogueManager(self.bus, self.config)
         self.telemetry = TelemetryLogger(self.bus, self.config)
+
+        # WebSocket Broadcast 
+        from ws_broadcaster import start_ws_server, register_bus_hooks
+        ws_loop = start_ws_server(port=8766)
+        register_bus_hooks(self.bus, harness=self)  # Pass harness reference to broadcaster for potential future use
+
 
     def _ui_flash(self, msg: str):
         self.ui_state["flash"] = msg
@@ -185,7 +246,7 @@ def run_live(harness: HarnessSystem):
     print(" - Sonuçları beklemek için terminali veya OpenCV penceresini takip edin.")
     print(" - Çıkış için OpenCV üzerinde 'q' tuşuna basın.")
     
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)
     tracker = GazeTracker()
     
     print("[INFO] Speech Module initialized. Starting ASR Engine (Whisper) ...")
@@ -199,6 +260,7 @@ def run_live(harness: HarnessSystem):
         try:
             if action == "press":
                 # Ensure speech adapter knows if it should expect dialog interactions (yes, no, etc.)
+                print(f"[DEBUG] DM state: {harness.dm.state}") 
                 harness.speech.set_dialog_active(harness.dm.state != "IDLE")
                 harness.speech.on_ptt_press()
             else:
@@ -272,6 +334,17 @@ def run_live(harness: HarnessSystem):
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
                 break
+            elif key == ord('d'):
+                ge = GazeEvent(
+                    timestamp=time.time(),
+                    type=GazeEventType.AMBIGUOUS,
+                    payload={"candidates": [
+                        {"id": "item_1", "pos": "left"},
+                        {"id": "item_2", "pos": "right"}
+                    ]},
+                    confidence=0.5
+                )
+                harness.bus.emit(ge)
             elif key == ord('m'):
                 current_time = time.time()
                 if current_time - last_m_press > 0.5:
@@ -369,3 +442,5 @@ if __name__ == "__main__":
         run_live(harness)
     else:
         run_scripted(harness)
+
+
