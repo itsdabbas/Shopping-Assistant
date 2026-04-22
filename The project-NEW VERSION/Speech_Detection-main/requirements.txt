@@ -1,0 +1,37 @@
+# GazeShop — Core Dependencies
+# ==============================
+# Run: pip install -r requirements.txt
+
+# Audio capture (required for live microphone input)
+sounddevice>=0.4.6
+
+# Numerical computation (audio buffer handling)
+numpy>=1.24
+
+# Offline ASR engine (primary, lightweight)
+vosk>=0.3.45
+
+# Keyboard listener for Push-to-Talk
+pynput>=1.7.6
+
+# Testing framework
+pytest>=7.0
+
+# ── Voice Activity Detection (VAD) — three-tier fallback chain ───────
+#
+#   1. Silero VAD  (neural, PRIMARY)     requires torch (below)
+#   2. WebRTC VAD  (rule-based, FALLBACK) requires webrtcvad
+#   3. No trimming (last resort, always available)
+#
+# Tier 1 — Silero VAD via torch.hub
+# If ASR_ENGINE='whisper', torch is already installed at no extra cost.
+# CPU-only install (no CUDA needed for a PTT assistant).
+# silero-vad bundles the model weights and pulls torch+torchaudio as
+# transitive dependencies.
+silero-vad>=5.1
+
+# Tier 2 — WebRTC VAD (automatic fallback when torch/Silero unavailable)
+# Windows: use webrtcvad-wheels (pre-built binary, no compiler needed)
+# Linux/macOS: use webrtcvad
+webrtcvad-wheels>=2.0.10; sys_platform == "win32"
+webrtcvad>=2.0.10; sys_platform != "win32"
