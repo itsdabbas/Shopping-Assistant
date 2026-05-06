@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gaze Shopping</title>
+  <style>
+    * { box-sizing: border-box; font-family: Arial, sans-serif; }
+    body { margin: 0; background: #f6f7fb; color: #1f2937; }
+
+    #hud {
+      position: fixed; top: 16px; right: 16px; width: 260px;
+      background: white; border: 1px solid #e5e7eb; border-radius: 14px;
+      padding: 14px 16px; font-size: 13px; z-index: 100;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08); line-height: 1.8;
+    }
+    #hud .label { color: #6b7280; font-size: 12px; }
+    #hud .val   { font-weight: 600; }
+    #status-dot {
+      display: inline-block; width: 9px; height: 9px;
+      border-radius: 50%; background: #d1d5db; margin-right: 6px;
+    }
+    #status-dot.connected  { background: #22c55e; }
+    #status-dot.calibrating{ background: #f59e0b; }
+    #status-dot.tracking   { background: #3b82f6; }
+
+    #cal-overlay {
+      position: fixed; inset: 0; background: rgba(2,6,23,0.82);
+      z-index: 200; display: flex; align-items: center; justify-content: center;
+    }
+    #cal-box {
+      background: white; border-radius: 16px; padding: 28px 32px;
+      text-align: center; max-width: 480px;
+    }
+    #cal-box h2 { margin: 0 0 10px; }
+    #cal-box p  { color: #475569; font-size: 14px; margin: 0 0 18px; }
+    #cal-progress {
+      background: #e5e7eb; border-radius: 8px; height: 8px; overflow: hidden;
+    }
+    #cal-progress-bar {
+      height: 100%; background: #3b82f6; border-radius: 8px;
+      transition: width 0.3s;
+    }
+    #cal-step-text { margin-top: 10px; font-size: 13px; color: #6b7280; }
+    #self-preview {
+      width: 220px; height: 124px; margin: 12px auto 14px;
+      border-radius: 10px; background: #0f172a; object-fit: cover;
+      border: 1px solid #e5e7eb;
+    }
+    #webcam-preview {
+      position: fixed; top: 16px; left: 16px; z-index: 110;
+      width: 240px; height: 135px; border-radius: 12px;
+      background: #0f172a; object-fit: cover;
+      border: 1px solid #cbd5e1;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    }
+    #webcam-preview, #self-preview {
+      transform: scaleX(-1);
+    }
+    /* During calibration, keep the in-dialog preview non-mirrored so it
+       matches on-screen target coordinates. */
+    #self-preview {
+      transform: none;
+    }
+    #webcam-preview.face-ok {
+      border: 3px solid #22c55e;
+      box-shadow: 0 0 0 3px rgba(34,197,94,0.35), 0 8px 24px rgba(0,0,0,0.15);
+    }
+    #webcam-preview.face-missing {
+      border: 3px solid #ef4444;
+      box-shadow: 0 0 0 3px rgba(239,68,68,0.25), 0 8px 24px rgba(0,0,0,0.15);
+    }
+    #webcam-badge {
+      position: fixed; top: 157px; left: 16px; z-index: 111;
+      background: #111827; color: #fff; padding: 4px 8px; border-radius: 8px;
+      font-size: 12px; letter-spacing: 0.2px;
+    }
+    .cal-actions { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+    .cal-btn {
+      border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; padding: 8px 12px;
+      font-size: 13px; cursor: pointer;
+    }
+    .cal-btn.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+
+    /* Red calibration target */
+    #cal-dot {
+      position: fixed; width: 28px; height: 28px; border-radius: 50%;
+      background: #ef4444; border: 3px solid white;
+      transform: translate(-50%, -50%);
+      z-index: 300; display: none;
+      box-shadow: 0 0 0 4px rgba(239,68,68,0.3);
+      transition: left 0.4s, top 0.4s;
+      pointer-events: none;
+    }
+    #cal-dot.pulse {
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
+      70%  { box-shadow: 0 0 0 12px rgba(239,68,68,0); }
+      100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
+    }
+
+    /* Gaze cursor */
+    #gaze-cursor {
+      position: fixed; width: 18px; height: 18px; border-radius: 50%;
+      background: rgba(59,130,246,0.7); border: 2px solid white;
+      transform: translate(-50%, -50%);
+      pointer-events: none; z-index: 99; display: none;
+      transition: left 0.08s linear, top 0.08s linear;
+    }
+
+    .topbar { padding: 28px 24px 16px; }
+    .topbar h1 { margin: 0; font-size: 26px; }
+    .topbar p  { margin: 6px 0 0; color: #6b7280; font-size: 14px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 280px);
+      gap: 28px;
+      padding: 0 24px 48px;
+      justify-content: center;
+    }
+    .card {
+      background: white; border: 3px solid transparent;
+      border-radius: 18px; padding: 22px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.07);
+      transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+      position: relative; overflow: hidden;
+    }
+    .card .img {
+      height: 200px; border-radius: 12px;
+      background: linear-gradient(135deg, #dbe4f0, #c4d2e6);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 62px; margin-bottom: 16px;
+    }
+    .card h3 { margin: 0 0 8px; font-size: 24px; }
+    .card p  { margin: 0; color: #6b7280; font-size: 15px; }
+
+    /* Dwell progress bar */
+    .dwell-bar {
+      position: absolute; bottom: 0; left: 0; height: 4px;
+      background: #f59e0b; width: 0%; border-radius: 0 0 18px 18px;
+      transition: width 0.05s linear;
+    }
+
+    .card.looking {
+      border-color: #f59e0b;
+      box-shadow: 0 8px 24px rgba(245,158,11,0.2);
+      transform: scale(1.015);
+    }
+    .card.selected {
+      border-color: #22c55e;
+      background: #f0fdf4;
+      box-shadow: 0 8px 24px rgba(34,197,94,0.2);
+      transform: scale(1.02);
+    }
+
+    .legend {
+      position: fixed; bottom: 16px; left: 16px;
+      background: white; border: 1px solid #e5e7eb;
+      border-radius: 14px; padding: 10px 14px; font-size: 13px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.07);
+    }
+    .legend-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+    #selected-toast {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      background: #22c55e; color: white; border-radius: 12px;
+      padding: 12px 24px; font-size: 15px; font-weight: 600;
+      opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 100;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Calibration overlay -->
+<div id="cal-overlay">
+  <div id="cal-box">
+    <h2>Calibrating Gaze</h2>
+    <p>
+      Keep your face centered and follow the red target dots.
+      For each red target, click Capture Point (or press Space).
+    </p>
+    <img id="self-preview" alt="Camera preview" />
+    <div id="cal-progress"><div id="cal-progress-bar" style="width:0%"></div></div>
+    <div id="cal-step-text">Waiting for WebSocket connection...</div>
+    <div class="cal-actions">
+      <button id="capture-btn" class="cal-btn primary">Capture Point (Space)</button>
+      <button id="reset-btn" class="cal-btn">Reset Calibration</button>
+    </div>
+  </div>
+</div>
+
+<!-- Calibration target on page -->
+<div id="cal-dot" class="pulse"></div>
+
+<!-- Persistent webcam preview -->
+<img id="webcam-preview" alt="Webcam preview" />
+<div id="webcam-badge">Face: unknown</div>
+
+<!-- Gaze cursor -->
+<div id="gaze-cursor"></div>
+
+<!-- HUD -->
+<div id="hud">
+  <div><span id="status-dot"></span><span id="status-text">Connecting...</span></div>
+  <div class="label">Gaze X / Y</div>
+  <div class="val" id="gaze-xy">— / —</div>
+  <div class="label">Current focus</div>
+  <div class="val" id="looking-at">—</div>
+</div>
+
+<!-- Products -->
+<div class="topbar">
+  <h1>Gaze Shopping</h1>
+  <p>Look at an item and keep focus for 1.2 seconds to select.</p>
+</div>
+
+<div class="grid" id="product-grid">
+  <div class="card" id="item-1"><div class="img">👕</div><h3>Blue T-Shirt</h3><p>Casual cotton top</p><div class="dwell-bar"></div></div>
+  <div class="card" id="item-2"><div class="img">🧥</div><h3>Black Jacket</h3><p>Lightweight outdoor jacket</p><div class="dwell-bar"></div></div>
+  <div class="card" id="item-3"><div class="img">👗</div><h3>Red Dress</h3><p>Elegant formal outfit</p><div class="dwell-bar"></div></div>
+  <div class="card" id="item-4"><div class="img">👟</div><h3>White Sneakers</h3><p>Daily comfort shoes</p><div class="dwell-bar"></div></div>
+  <div class="card" id="item-5"><div class="img">👜</div><h3>Brown Bag</h3><p>Minimal shoulder bag</p><div class="dwell-bar"></div></div>
+  <div class="card" id="item-6"><div class="img">🧢</div><h3>Green Cap</h3><p>Sport style accessory</p><div class="dwell-bar"></div></div>
+</div>
+
+<div class="legend">
+  <div class="legend-row"><div class="dot" style="background:#f59e0b"></div><span>Looking</span></div>
+  <div class="legend-row"><div class="dot" style="background:#22c55e"></div><span>Selected</span></div>
+</div>
+
+<div id="selected-toast"></div>
+
+<script>
+  // --- Elements ---
+  const calOverlay   = document.getElementById("cal-overlay");
+  const calDot       = document.getElementById("cal-dot");
+  const calProgressBar = document.getElementById("cal-progress-bar");
+  const calStepText  = document.getElementById("cal-step-text");
+  const selfPreview  = document.getElementById("self-preview");
+  const webcamPreview = document.getElementById("webcam-preview");
+  const webcamBadge  = document.getElementById("webcam-badge");
+  const captureBtn   = document.getElementById("capture-btn");
+  const resetBtn     = document.getElementById("reset-btn");
+  const statusDot    = document.getElementById("status-dot");
+  const statusText   = document.getElementById("status-text");
+  const gazeXY       = document.getElementById("gaze-xy");
+  const lookingAt    = document.getElementById("looking-at");
+  const gazeCursor   = document.getElementById("gaze-cursor");
+  const toast        = document.getElementById("selected-toast");
+  const cards        = document.querySelectorAll(".card");
+
+  // --- Parameters ---
+  const DETECTION_ONLY  = false;
+  const DWELL_MS        = 850;
+  const SNAP_MAX_PX     = 260;
+  const VOTE_WINDOW     = 12;
+  const VOTE_MIN        = 4;
+  const VOTE_RATIO      = 0.40;
+
+  // --- State ---
+  let lookCandidate  = null;
+  let lookSince      = 0;
+  let selectedCard   = null;
+  const voteBuffer   = [];
+
+  // --- WebSocket ---
+  let ws;
+  function sendCmd(cmd) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ cmd }));
+    }
+  }
+  function connect() {
+    ws = new WebSocket("ws://localhost:8765");
+
+    ws.onopen = () => {
+      statusDot.className = "connected";
+      statusText.textContent = "Connected - calibrating";
+      calStepText.textContent = "Connected. Look at target and press Space to capture.";
+    };
+
+    ws.onclose = () => {
+      statusDot.className = "";
+      statusText.textContent = "Disconnected - waiting for server";
+      setTimeout(connect, 2000);
+    };
+
+    ws.onerror = () => {
+      statusDot.className = "";
+      statusText.textContent = "Connection failed (ws://localhost:8765)";
+    };
+
+    ws.onmessage = (ev) => {
+      let data;
+      try { data = JSON.parse(ev.data); } catch { return; }
+      handleGazeData(data);
+    };
+  }
+  connect();
+
+  function handleGazeData(data) {
+    const { status, gaze_x, gaze_y, cal_step, cal_total, cal_target, frame_jpg } = data;
+    const faceDetected = status !== "no_face";
+    webcamPreview.classList.toggle("face-ok", faceDetected);
+    webcamPreview.classList.toggle("face-missing", !faceDetected);
+    webcamBadge.textContent = faceDetected ? "Face: detected" : "Face: not detected";
+    if (frame_jpg) {
+      const src = `data:image/jpeg;base64,${frame_jpg}`;
+      webcamPreview.src = src;
+      selfPreview.src = src;
+    }
+
+    // Calibration progress
+    if (status === "calibrating" || status === "no_face") {
+      const pct = cal_total ? Math.round((cal_step / cal_total) * 100) : 0;
+      calProgressBar.style.width = pct + "%";
+      calStepText.textContent = status === "no_face"
+        ? "Face not detected - look at camera"
+        : `Step ${cal_step + 1} / ${cal_total} - look at target, then press Space`;
+      statusDot.className = "calibrating";
+      statusText.textContent = "Calibrating...";
+
+      // Show target point on page
+      if (cal_target) {
+        calDot.style.display = "block";
+        calDot.style.left = (cal_target[0] * 100) + "vw";
+        calDot.style.top  = (cal_target[1] * 100) + "vh";
+      }
+      return;
+    }
+
+    // Tracking active
+    if (status === "tracking" && gaze_x !== null) {
+      // Hide calibration overlay
+      if (calOverlay.style.display !== "none") {
+        calOverlay.style.display = "none";
+        calDot.style.display = "none";
+        gazeCursor.style.display = "block";
+      }
+
+      statusDot.className = "tracking";
+      statusText.textContent = "Tracking active";
+
+      const screenX = gaze_x * window.innerWidth;
+      const screenY = gaze_y * window.innerHeight;
+
+      // Cursor
+      gazeCursor.style.left = Math.round(screenX) + "px";
+      gazeCursor.style.top  = Math.round(screenY) + "px";
+      gazeXY.textContent = `${(gaze_x).toFixed(2)} / ${(gaze_y).toFixed(2)}`;
+
+      updateSelection(screenX, screenY);
+    }
+  }
+
+  function getCardAt(x, y) {
+    // First, check if gaze is inside a card
+    for (const card of cards) {
+      const r = card.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return card;
+    }
+    // Snap to nearest card
+    let best = null, bestDist = Infinity;
+    for (const card of cards) {
+      const r = card.getBoundingClientRect();
+      const cx = (r.left + r.right) / 2;
+      const cy = (r.top + r.bottom) / 2;
+      const d = Math.hypot(x - cx, y - cy);
+      if (d < bestDist) { bestDist = d; best = card; }
+    }
+    return bestDist <= SNAP_MAX_PX ? best : null;
+  }
+
+  function majorityCard() {
+    const valid = voteBuffer.filter(Boolean);
+    if (valid.length < VOTE_MIN) return null;
+    const counts = new Map();
+    valid.forEach(el => counts.set(el, (counts.get(el) || 0) + 1));
+    let best = null, bestCnt = 0;
+    counts.forEach((cnt, el) => { if (cnt > bestCnt) { bestCnt = cnt; best = el; } });
+    return (best && bestCnt / valid.length >= VOTE_RATIO) ? best : null;
+  }
+
+  function showToast(name) {
+    toast.textContent = "✓ " + name + " selected!";
+    toast.style.opacity = "1";
+    setTimeout(() => { toast.style.opacity = "0"; }, 2200);
+  }
+
+  function updateSelection(x, y) {
+    if (DETECTION_ONLY) return;
+    const raw = getCardAt(x, y);
+    voteBuffer.push(raw);
+    if (voteBuffer.length > VOTE_WINDOW) voteBuffer.shift();
+
+    const card = majorityCard();
+
+    // Clear previous looking state
+    cards.forEach(c => {
+      c.classList.remove("looking");
+      c.querySelector(".dwell-bar").style.width = "0%";
+    });
+
+    if (!card) {
+      lookCandidate = null;
+      lookSince = 0;
+      lookingAt.textContent = "—";
+      return;
+    }
+
+    lookingAt.textContent = card.querySelector("h3").textContent;
+    card.classList.add("looking");
+
+    if (lookCandidate !== card) {
+      lookCandidate = card;
+      lookSince = performance.now();
+    }
+
+    const elapsed = performance.now() - lookSince;
+    const pct = Math.min(100, (elapsed / DWELL_MS) * 100);
+    card.querySelector(".dwell-bar").style.width = pct + "%";
+
+    if (elapsed >= DWELL_MS) {
+      if (selectedCard !== card) {
+        if (selectedCard) selectedCard.classList.remove("selected");
+        selectedCard = card;
+        selectedCard.classList.add("selected");
+        showToast(card.querySelector("h3").textContent);
+      }
+    }
+  }
+
+  captureBtn.addEventListener("click", () => sendCmd("capture"));
+  resetBtn.addEventListener("click", () => sendCmd("reset"));
+  window.addEventListener("keydown", (ev) => {
+    if (ev.code === "Space") {
+      ev.preventDefault();
+      sendCmd("capture");
+    } else if (ev.key.toLowerCase() === "r") {
+      sendCmd("reset");
+    }
+  });
+
+  // Preview is streamed from Python server frames to avoid webcam conflicts.
+</script>
+</body>
+</html>

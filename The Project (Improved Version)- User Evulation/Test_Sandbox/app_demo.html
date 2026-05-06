@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GazeShop — Multimodal Demo</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0f1117;
+  color: #e0e0e0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Top status bar ── */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 20px;
+  background: #1a1d27;
+  border-bottom: 1px solid #2a2d3a;
+  flex-shrink: 0;
+  font-size: 0.82em;
+}
+.conn-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #f85149; flex-shrink: 0;
+}
+.conn-dot.on { background: #3fb950; }
+#fusion-state-badge {
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 0.85em;
+  font-weight: 600;
+  background: #2a2d3a;
+  color: #8b949e;
+  margin-left: auto;
+  transition: background 0.3s, color 0.3s;
+}
+#fusion-state-badge.READY          { background: #1a3a2a; color: #3fb950; }
+#fusion-state-badge.NEEDS_TARGET   { background: #2a2010; color: #e3b341; }
+#fusion-state-badge.NEEDS_DISAMBIG { background: #2a1c0a; color: #f0883e; }
+#fusion-state-badge.NEEDS_CONFIRM  { background: #1c2a3a; color: #58a6ff; }
+#fusion-state-badge.CANCELLED      { background: #2a1414; color: #f85149; }
+
+/* ── Main layout ── */
+#main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+
+/* ── Product grid ── */
+#grid-area {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+}
+#grid-area h2 {
+  font-size: 0.8em;
+  color: #484f58;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
+}
+#product-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.pcard {
+  background: #1a1d27;
+  border: 2px solid #2a2d3a;
+  border-radius: 10px;
+  padding: 12px 8px;
+  text-align: center;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+  position: relative;
+  cursor: default;
+  user-select: none;
+}
+.pcard .emoji  { font-size: 2em; display: block; margin-bottom: 4px; }
+.pcard .pname  { font-size: 0.78em; font-weight: 600; color: #c9d1d9; }
+.pcard .pprice { font-size: 0.72em; color: #484f58; margin-top: 2px; }
+.pcard .pid    { font-size: 0.65em; color: #30363d; margin-top: 2px; font-family: monospace; }
+
+/* dwell progress bar */
+.dwell-bar {
+  position: absolute;
+  bottom: 0; left: 0;
+  height: 3px;
+  width: 0%;
+  background: #3b82f6;
+  border-radius: 0 0 8px 8px;
+  transition: width 0.1s linear;
+}
+
+.pcard.hovered {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+}
+.pcard.hovered .dwell-bar { background: #3b82f6; }
+
+.pcard.locked {
+  border-color: #3fb950;
+  box-shadow: 0 0 0 4px rgba(63,185,80,0.2);
+  transform: scale(1.03);
+}
+.pcard.locked .dwell-bar { width: 100% !important; background: #3fb950; }
+
+.pcard.added {
+  border-color: #58a6ff;
+  background: #1c2a3a;
+}
+.pcard.added::after {
+  content: '✓ in cart';
+  position: absolute;
+  top: 6px; right: 6px;
+  font-size: 0.6em;
+  background: #1a3a2a;
+  color: #3fb950;
+  padding: 2px 6px;
+  border-radius: 99px;
+}
+
+/* ── Right sidebar ── */
+#sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid #2a2d3a;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel {
+  padding: 14px 16px;
+  border-bottom: 1px solid #2a2d3a;
+  flex-shrink: 0;
+}
+.panel-title {
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #484f58;
+  margin-bottom: 10px;
+}
+
+/* Speech panel */
+#ptt-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82em;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: #2a2d3a;
+  color: #8b949e;
+  margin-bottom: 8px;
+}
+#ptt-status.listening {
+  background: #2a1414;
+  color: #f85149;
+  animation: blink 0.8s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+.speech-row { font-size: 0.78em; margin-top: 5px; line-height: 1.6; }
+.speech-label { color: #484f58; }
+.speech-val   { color: #c9d1d9; }
+#transcript-val { color: #d2a8ff; font-style: italic; }
+#intent-val     { color: #79c0ff; font-weight: 600; }
+#conf-bar-wrap  { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+#conf-bar {
+  flex: 1; height: 4px; background: #2a2d3a;
+  border-radius: 2px; overflow: hidden;
+}
+#conf-bar-fill {
+  height: 100%; width: 0%;
+  background: #3fb950;
+  transition: width 0.4s;
+}
+#conf-val { font-size: 0.75em; color: #8b949e; min-width: 32px; text-align: right; }
+
+/* Fusion panel */
+#fusion-panel { flex-shrink: 0; }
+#prompt-box {
+  background: #2a2010;
+  border: 1px solid #e3b341;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.82em;
+  color: #e3b341;
+  display: none;
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+/* Cart */
+#cart-panel { flex-shrink: 0; }
+#cart-list { font-size: 0.78em; }
+.cart-row {
+  display: flex; justify-content: space-between;
+  padding: 3px 0; border-bottom: 1px solid #2a2d3a;
+  color: #c9d1d9;
+}
+#cart-total {
+  font-size: 0.82em; font-weight: 700;
+  color: #58a6ff; margin-top: 6px;
+  display: none;
+}
+
+/* Event log */
+#log-panel {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  min-height: 0;
+}
+#log-panel .panel-title { flex-shrink: 0; }
+#event-log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.log-entry {
+  font-size: 0.7em;
+  font-family: monospace;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border-left: 2px solid transparent;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+.log-entry.COMMAND       { border-color: #58a6ff; color: #79c0ff; background: #1c2233; }
+.log-entry.LOCKED        { border-color: #3fb950; color: #56d364; background: #162520; }
+.log-entry.UNLOCKED,
+.log-entry.EXPIRED       { border-color: #30363d; color: #484f58; }
+.log-entry.SPEECH        { border-color: #d2a8ff; color: #c9a8ff; background: #1e1a2e; }
+.log-entry.DISAMBIGUATION,
+.log-entry.CONFIRMATION  { border-color: #e3b341; color: #e3b341; background: #2a2010; }
+.log-entry.CANCELLED     { border-color: #f85149; color: #f85149; background: #2a1414; }
+.log-entry.PROMPT        { border-color: #f0883e; color: #f0883e; }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div id="topbar">
+  <div class="conn-dot" id="conn-dot"></div>
+  <span id="conn-label">Connecting to ws://localhost:8766…</span>
+  <span id="fusion-state-badge">NO TARGET</span>
+</div>
+
+<!-- Main -->
+<div id="main">
+
+  <!-- Product grid -->
+  <div id="grid-area">
+    <h2>Products — look at a card to lock, then speak a command</h2>
+    <div id="product-grid"></div>
+  </div>
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+
+    <!-- Speech -->
+    <div class="panel" id="speech-panel">
+      <div class="panel-title">Speech</div>
+      <div id="ptt-status">
+        <span id="ptt-dot" style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block"></span>
+        <span id="ptt-label">STANDBY — Hold 'M' to Talk</span>
+      </div>
+      <div class="speech-row">
+        <span class="speech-label">Transcript: </span>
+        <span class="speech-val" id="transcript-val">—</span>
+      </div>
+      <div class="speech-row">
+        <span class="speech-label">Intent: </span>
+        <span class="speech-val" id="intent-val">—</span>
+      </div>
+      <div class="conf-bar-wrap" id="conf-bar-wrap">
+        <div id="conf-bar"><div id="conf-bar-fill"></div></div>
+        <span id="conf-val">—</span>
+      </div>
+      <button id="ambig-btn" onclick="triggerAmbig()" style="
+        margin-top: 8px;
+        width: 100%;
+        padding: 6px;
+        background: #2a1c0a;
+        color: #f0883e;
+        border: 1px solid #f0883e;
+        border-radius: 6px;
+        font-size: 0.78em;
+        cursor: pointer;
+      ">⚡ Simulate Ambiguous Gaze
+      </button>
+    </div>
+
+    <!-- Fusion -->
+    <div class="panel" id="fusion-panel">
+      <div class="panel-title">Fusion / Dialog</div>
+      <div id="fusion-detail" style="font-size:0.78em;color:#8b949e">Waiting for input…</div>
+      <div id="prompt-box"></div>
+    </div>
+
+    <!-- Cart -->
+    <div class="panel" id="cart-panel">
+      <div class="panel-title">Cart</div>
+      <div id="cart-list"><span style="color:#484f58;font-size:0.78em">Empty</span></div>
+      <div id="cart-total"></div>
+    </div>
+
+    <!-- Event log -->
+    <div id="log-panel">
+      <div class="panel-title">Event log</div>
+      <div id="event-log"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Product data ──────────────────────────────────────────────────
+const PRODUCTS = [
+  { id:'item_1',  emoji:'👟', name:'Sneakers',      price:89.99  },
+  { id:'item_2',  emoji:'🎧', name:'Headphones',    price:149.99 },
+  { id:'item_3',  emoji:'⌚', name:'Smartwatch',    price:199.99 },
+  { id:'item_4',  emoji:'📱', name:'Phone Case',    price:19.99  },
+  { id:'item_5',  emoji:'💻', name:'Laptop Stand',  price:49.99  },
+  { id:'item_6',  emoji:'🖱️', name:'Mouse',         price:39.99  },
+  { id:'item_7',  emoji:'⌨️', name:'Keyboard',      price:79.99  },
+  { id:'item_8',  emoji:'🔋', name:'Power Bank',    price:29.99  },
+  { id:'item_9',  emoji:'📷', name:'Webcam',        price:69.99  },
+  { id:'item_10', emoji:'🎮', name:'Controller',    price:59.99  },
+  { id:'item_11', emoji:'📚', name:'Notebook',      price:9.99   },
+  { id:'item_12', emoji:'🖊️', name:'Stylus',        price:24.99  },
+  { id:'item_13', emoji:'🔌', name:'USB Hub',       price:34.99  },
+  { id:'item_14', emoji:'💡', name:'Desk Lamp',     price:44.99  },
+  { id:'item_15', emoji:'🎵', name:'Speaker',       price:89.99  },
+  { id:'item_16', emoji:'📦', name:'Storage Box',   price:14.99  },
+];
+
+const PRICES = {};
+const NAMES  = {};
+PRODUCTS.forEach(p => { PRICES[p.id] = p.price; NAMES[p.id] = p.name; });
+
+// ── Build grid ────────────────────────────────────────────────────
+const grid = document.getElementById('product-grid');
+PRODUCTS.forEach(p => {
+  const div = document.createElement('div');
+  div.className = 'pcard';
+  div.id = p.id;
+  div.innerHTML = `
+    <span class="emoji">${p.emoji}</span>
+    <div class="pname">${p.name}</div>
+    <div class="pprice">$${p.price.toFixed(2)}</div>
+    <div class="pid">${p.id}</div>
+    <div class="dwell-bar" id="dwell-${p.id}"></div>
+  `;
+  grid.appendChild(div);
+});
+
+// ── State ─────────────────────────────────────────────────────────
+let currentGaze = null;
+let cart = {};
+let dwellTimer = null;
+let dwellStart = null;
+const DWELL_S = 1.0; // match config
+let ws;
+
+// ── WebSocket ─────────────────────────────────────────────────────
+function connect() {
+  ws = new WebSocket('ws://localhost:8766');
+  const dot   = document.getElementById('conn-dot');
+  const label = document.getElementById('conn-label');
+
+  ws.onopen = () => {
+    dot.classList.add('on');
+    label.textContent = 'Connected — look at a product and speak';
+  };
+  ws.onclose = () => {
+    dot.classList.remove('on');
+    label.textContent = 'Disconnected — retrying…';
+    setTimeout(connect, 2000);
+  };
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    handleMsg(msg);
+    logEvent(msg);
+  };
+}
+// Simulate an ambiguous gaze event for demo purposes (e.g. when user looks between two items)
+function triggerAmbig() {
+  ws.send(JSON.stringify({
+    type: 'SIMULATE',
+    event: 'AMBIGUOUS',
+    candidates: [
+      {id: 'item_1', pos: 'left'},
+      {id: 'item_2', pos: 'right'}
+    ]
+  }));
+}
+
+// ── Message handler ───────────────────────────────────────────────
+function handleMsg(msg) {
+  const badge  = document.getElementById('fusion-state-badge');
+  const detail = document.getElementById('fusion-detail');
+  const prompt = document.getElementById('prompt-box');
+
+  if (msg.type === 'LOCKED') {
+    clearGaze();
+    currentGaze = msg.target_id;
+    const el = document.getElementById(currentGaze);
+    if (el) {
+      el.classList.remove('hovered');
+      el.classList.add('locked');
+      document.getElementById('dwell-' + currentGaze).style.width = '100%';
+    }
+    badge.className = 'READY';
+    badge.textContent = 'READY — ' + (NAMES[currentGaze] || currentGaze);
+    detail.textContent = 'Locked on ' + (NAMES[currentGaze] || currentGaze);
+    detail.style.color = '#3fb950';
+    stopDwell();
+  }
+
+  if (msg.type === 'UNLOCKED' || msg.type === 'EXPIRED') {
+    clearGaze();
+    badge.className = '';
+    badge.textContent = 'NO TARGET';
+    detail.textContent = 'No target locked';
+    detail.style.color = '#8b949e';
+    prompt.style.display = 'none';
+    stopDwell();
+  }
+
+  if (msg.type === 'SPEECH') {
+    const ptt = document.getElementById('ptt-status');
+    const pttLabel = document.getElementById('ptt-label');
+    if (msg.speech_type === 'LISTENING') {
+      ptt.classList.add('listening');
+      pttLabel.textContent = 'Listening…';
+    } else if (msg.speech_type === 'STOPPED') {
+      ptt.classList.remove('listening');
+      pttLabel.textContent = 'STANDBY — Hold \'M\' to Talk';
+    } else if (msg.speech_type === 'INTENT') {
+      ptt.classList.remove('listening');
+      pttLabel.textContent = 'STANDBY — Hold \'M\' to Talk';
+      document.getElementById('transcript-val').textContent = msg.transcript || '—';
+    }
+  }
+
+  if (msg.type === 'COMMAND') {
+    const intent = msg.intent;
+    const tid    = msg.target_id;
+    document.getElementById('intent-val').textContent = intent;
+    const conf = msg.confidence || 0;
+    document.getElementById('conf-bar-fill').style.width = (conf * 100) + '%';
+    document.getElementById('conf-val').textContent = (conf * 100).toFixed(0) + '%';
+    document.getElementById('conf-bar-fill').style.background =
+      conf > 0.7 ? '#3fb950' : conf > 0.4 ? '#e3b341' : '#f85149';
+
+    badge.className = 'READY';
+    badge.textContent = 'COMMAND EXECUTED';
+    prompt.style.display = 'none';
+    executeCommand(intent, tid);
+  }
+
+  if (msg.type === 'DISAMBIGUATION') {
+    badge.className = 'NEEDS_DISAMBIG';
+    badge.textContent = 'NEEDS_DISAMBIG';
+    const opts = (msg.candidates || []).map(c => `${c.pos}: ${c.id}`).join('  /  ');
+    prompt.style.display = 'block';
+    prompt.textContent = '❓ ' + (msg.message || 'Which one?') + '  (' + opts + ')';
+    detail.textContent = 'Say "left" or "right"';
+    detail.style.color = '#f0883e';
+  }
+
+  if (msg.type === 'CONFIRMATION') {
+    badge.className = 'NEEDS_CONFIRM';
+    badge.textContent = 'NEEDS_CONFIRM';
+    prompt.style.display = 'block';
+    prompt.textContent = '❓ ' + (msg.message || 'Confirm?') + '  (say "yes" / "no")';
+    detail.textContent = 'Waiting for confirmation';
+    detail.style.color = '#58a6ff';
+  }
+
+  if (msg.type === 'PROMPT') {
+    badge.className = 'NEEDS_TARGET';
+    badge.textContent = 'NEEDS_TARGET';
+    prompt.style.display = 'block';
+    prompt.textContent = '👁️ ' + msg.message;
+    detail.textContent = 'Look at a product first';
+    detail.style.color = '#e3b341';
+  }
+
+  if (msg.type === 'CANCELLED') {
+    badge.className = 'CANCELLED';
+    badge.textContent = 'CANCELLED';
+    prompt.style.display = 'block';
+    prompt.style.borderColor = '#f85149';
+    prompt.style.color = '#f85149';
+    prompt.style.background = '#2a1414';
+    prompt.textContent = '❌ ' + msg.message;
+    detail.textContent = 'Action cancelled';
+    detail.style.color = '#f85149';
+    setTimeout(() => {
+      prompt.style.display = 'none';
+      prompt.style.borderColor = '';
+      prompt.style.color = '';
+      prompt.style.background = '';
+    }, 3000);
+  }
+}
+
+// ── Dwell progress simulation ─────────────────────────────────────
+// We animate the dwell bar on hover so the user can see progress
+function startDwell(itemId) {
+  stopDwell();
+  dwellStart = Date.now();
+  const bar = document.getElementById('dwell-' + itemId);
+  if (!bar) return;
+
+  function tick() {
+    const elapsed = (Date.now() - dwellStart) / 1000;
+    const pct = Math.min(100, (elapsed / DWELL_S) * 100);
+    bar.style.width = pct + '%';
+    if (pct < 100) dwellTimer = requestAnimationFrame(tick);
+  }
+  dwellTimer = requestAnimationFrame(tick);
+}
+
+function stopDwell() {
+  if (dwellTimer) { cancelAnimationFrame(dwellTimer); dwellTimer = null; }
+  dwellStart = null;
+}
+
+function clearGaze() {
+  if (currentGaze) {
+    const el = document.getElementById(currentGaze);
+    if (el) {
+      el.classList.remove('hovered', 'locked');
+      const bar = document.getElementById('dwell-' + currentGaze);
+      if (bar) bar.style.width = '0%';
+    }
+    currentGaze = null;
+  }
+}
+
+// ── Command execution ─────────────────────────────────────────────
+function executeCommand(intent, target_id) {
+  const el   = document.getElementById(target_id);
+  const name = NAMES[target_id] || target_id || '?';
+
+  if (intent === 'ADD_TO_CART') {
+    cart[target_id] = (cart[target_id] || 0) + 1;
+    if (el) { el.classList.add('added'); }
+    renderCart();
+  } else if (intent === 'REMOVE_FROM_CART') {
+    if (cart[target_id]) {
+      cart[target_id]--;
+      if (cart[target_id] === 0) { delete cart[target_id]; if (el) el.classList.remove('added'); }
+    }
+    renderCart();
+  } else if (intent === 'SHOW_DETAILS') {
+    if (el) {
+      el.style.outline = '3px solid #a855f7';
+      setTimeout(() => { if (el) el.style.outline = ''; }, 2000);
+    }
+  }
+}
+
+// ── Cart ──────────────────────────────────────────────────────────
+function renderCart() {
+  const list  = document.getElementById('cart-list');
+  const total = document.getElementById('cart-total');
+  const entries = Object.entries(cart);
+  if (!entries.length) {
+    list.innerHTML = '<span style="color:#484f58;font-size:0.78em">Empty</span>';
+    total.style.display = 'none';
+    return;
+  }
+  let sum = 0;
+  list.innerHTML = entries.map(([id, qty]) => {
+    const sub = PRICES[id] * qty;
+    sum += sub;
+    return `<div class="cart-row"><span>${NAMES[id]} ×${qty}</span><span>$${sub.toFixed(2)}</span></div>`;
+  }).join('');
+  total.textContent = 'Total  $' + sum.toFixed(2);
+  total.style.display = 'block';
+}
+
+// ── Event log ─────────────────────────────────────────────────────
+function logEvent(msg) {
+  const log = document.getElementById('event-log');
+  const div = document.createElement('div');
+  div.className = 'log-entry ' + msg.type;
+  const t = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  div.textContent = `[${t}] ${JSON.stringify(msg)}`;
+  log.prepend(div);
+  while (log.children.length > 100) log.removeChild(log.lastChild);
+}
+
+connect();
+
+// PTT: Hold M to record, release to transcribe
+document.addEventListener('keydown', e => {
+  if (e.code === 'KeyM' && !e.repeat) {
+    ws.send(JSON.stringify({type: 'PTT', action: 'press'}));
+    document.getElementById('ptt-status').classList.add('listening');
+    document.getElementById('ptt-label').textContent = 'Listening…';
+  }
+});
+document.addEventListener('keyup', e => {
+  if (e.code === 'KeyM') {
+    ws.send(JSON.stringify({type: 'PTT', action: 'release'}));
+    document.getElementById('ptt-status').classList.remove('listening');
+    document.getElementById('ptt-label').textContent = 'STANDBY — Hold \'M\' to Talk';
+  }
+});
+
+</script>
+</body>
+</html>
